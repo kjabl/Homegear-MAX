@@ -29,6 +29,7 @@
 
 #include "MAXCentral.h"
 #include "MAXDeviceTypes.h"
+#include "VirtualPeers/BcTcCWm.h"
 #include "GD.h"
 
 #include <iomanip>
@@ -252,10 +253,10 @@ bool MAXCentral::onPacketReceived(std::string& senderID, std::shared_ptr<BaseLib
 			if(peer)
 			{
 				if(senderID != peer->getPhysicalInterfaceID()) return true; //Packet we sent was received by another interface
-				GD::out.printWarning("Warning: Central address of packet to peer " + std::to_string(peer->getID()) + " was spoofed. Packet was: " + maxPacket->hexString());
+				GD::out.printWarning("Warning: Central address of packet to peer " + std::to_string(peer->getID()) + " was spoofed. Packet was: 'not implemented info'");
 				peer->serviceMessages->set("CENTRAL_ADDRESS_SPOOFED", 1, 0);
 				std::shared_ptr<std::vector<std::string>> valueKeys(new std::vector<std::string> { "CENTRAL_ADDRESS_SPOOFED" });
-				std::shared_ptr<std::vector<PVariable>> values(new std::vector<PVariable> { std::make_shared<Variable>((int32_t)1) });
+				std::shared_ptr<std::vector<PVariable>> values(new std::vector<PVariable> { PVariable(new Variable((int32_t)1)) });
                 std::string eventSource = "device-" + std::to_string(peer->getID());
                 std::string address = peer->getSerialNumber() + ":0";
 				raiseRPCEvent(eventSource, peer->getID(), 0, address, valueKeys, values);
@@ -1111,12 +1112,157 @@ std::shared_ptr<MAXPeer> MAXCentral::createPeer(int32_t address, int32_t firmwar
     return std::shared_ptr<MAXPeer>();
 }
 
+int32_t MAXCentral::getUniqueAddress(int32_t seed)
+{
+	//simply copied from HomeMaticCentral
+	try
+	{
+		uint32_t i = 0;
+		while((_peers.find(seed) != _peers.end()) && i++ < 200000)
+		{
+			seed += 9345;
+			if(seed > 16777215) seed -= 16777216;
+		}
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	return seed;
+}
+
+std::string MAXCentral::getUniqueSerialNumber(std::string seedPrefix, uint32_t seedNumber)
+{
+	try
+	{
+		if(seedPrefix.size() > 3) throw BaseLib::Exception("seedPrefix is too long.");
+		uint32_t i = 0;
+		int32_t numberSize = 10 - seedPrefix.size();
+		std::ostringstream stringstream;
+		stringstream << seedPrefix << std::setw(numberSize) << std::setfill('0') << std::dec << seedNumber;
+		std::string temp2 = stringstream.str();
+		while((_peersBySerial.find(temp2) != _peersBySerial.end()) && i++ < 100000)
+		{
+			stringstream.str(std::string());
+			stringstream.clear();
+			seedNumber += 73;
+			if(seedNumber > 9999999) seedNumber -= 10000000;
+			std::ostringstream stringstream;
+			stringstream << seedPrefix << std::setw(numberSize) << std::setfill('0') << std::dec << seedNumber;
+			temp2 = stringstream.str();
+		}
+		return temp2;
+	}
+	catch(const std::exception& ex)
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+	return "";
+}
+
 void MAXCentral::addHomegearFeatures(std::shared_ptr<MAXPeer> peer)
 {
 	try
 	{
 		if(!peer) return;
-		//if(peer->getDeviceType().type() == (uint32_t)DeviceType::BCRTTRXCYG3) addHomegearFeaturesValveDrive(peer);
+		if(peer->getDeviceType() == (uint32_t)DeviceType::BCRTTRXCYG3) addHomegearFeaturesValveDrive(peer);
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(BaseLib::Exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch(...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+}
+
+void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
+{
+	try
+	{
+		//virtuellen MAXPeer erzeugen, hier: Einen virtuellen Wandthermostat
+		std::shared_ptr<MAXPeer> wt;
+		uint64_t wtId = peer->getVirtualPeerId();
+		if(wtId != 0) wt = getPeer(wtId);
+		if(!wt)
+		{
+			int32_t wtAddress = getUniqueAddress((0x39 << 16) + (peer->getAddress() & 0xFF00) + (peer->getAddress() & 0xFF)); //simply copied from HomeMaticCentral
+			if(peer->hasPeers(3) && !peer->getPeer(3, wtId)) return; //Channel 3 for THERMALCONTROL_TC, check if already linked to another Peer on this channel
+			std::string temp = peer->getSerialNumber().substr(3);
+			std::string serialNumber = getUniqueSerialNumber("VMD", BaseLib::Math::getNumber(temp));
+			wt.reset(new BcTcCWm(_deviceId, this));
+			wt->setAddress(wtAddress);
+			wt->setFirmwareVersion(0x10);	//TODO: Which version is necessary/working here?
+			wt->setDeviceType((uint32_t)DeviceType::BCTCCWM4);
+			wt->setSerialNumber(serialNumber);
+			PHomegearDevice rpcDevice = GD::family->getRpcDevices()->find(wt->getDeviceType(), 0x10);
+			if(!rpcDevice)
+			{
+				GD::out.printError("Error: Could not create virtual peer of type BC-TC-C-WM-4.");
+				return;
+			}
+			wt->setRpcDevice(rpcDevice);
+			try
+			{
+				_peersMutex.lock();
+				if(!wt->getSerialNumber().empty()) _peersBySerial[wt->getSerialNumber()] = wt;
+				_peersMutex.unlock();
+				wt->save(true, true, false);
+				wt->initializeCentralConfig();
+				_peersMutex.lock();
+				_peersById[wt->getID()] = wt;
+				_peersMutex.unlock();
+			}
+			catch(const std::exception& ex)
+			{
+				_peersMutex.unlock();
+				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+			}
+			std::shared_ptr<BaseLib::Systems::BasicPeer> bcrttrxcyg(new BaseLib::Systems::BasicPeer());
+			bcrttrxcyg->id = peer->getID();
+			bcrttrxcyg->address = peer->getAddress();
+			bcrttrxcyg->serialNumber = peer->getSerialNumber();
+			bcrttrxcyg->channel = 3; //Target channel for THERMALCONTROL_TC
+			wt->addPeer(1, bcrttrxcyg);
+		}
+		std::shared_ptr<BaseLib::Systems::BasicPeer> bctccwm(new BaseLib::Systems::BasicPeer());
+		bctccwm->id = wt->getID();
+		bctccwm->address = wt->getAddress();
+		bctccwm->serialNumber = wt->getSerialNumber();
+		bctccwm->channel = 1;
+		bctccwm->isSender = true;
+		bctccwm->isVirtual = true;
+		peer->addPeer(3, bctccwm);
+
+		std::shared_ptr<PacketQueue> pendingQueue(new PacketQueue(peer->getPhysicalInterface(), PacketQueueType::CONFIG));
+		pendingQueue->noSending = true;
+
+		std::vector<uint8_t> payload;
+		//CONFIG_ADD_PEER
+		payload.push_back(0);
+		payload.push_back(peer->getAddress() >> 16);
+		payload.push_back((peer->getAddress() >> 8)& 0xFF);
+		payload.push_back(peer->getAddress() & 0xFF);
+		payload.push_back(0x01); //virtual Wallthermostat bctccwm is sending from channel 1
+		std::shared_ptr<MAXPacket> configPacket(new MAXPacket(_messageCounter[0], 0x20, 0, _address, peer->getAddress(), payload, peer->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
+		pendingQueue->push(configPacket);
+		pendingQueue->push(_messages->find(0x02, 0x02, std::vector<std::pair<uint32_t, int32_t>>()));
+		_messageCounter[0]++;
+
+		peer->pendingQueues->push(pendingQueue);
+		peer->serviceMessages->setConfigPending(true);
+
+		if((peer->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio) || (peer->getRXModes() & HomegearDevice::ReceiveModes::always))
+		{
+			std::shared_ptr<PacketQueue> queue = _queueManager.createQueue(peer->getPhysicalInterface(), PacketQueueType::CONFIG, peer->getAddress());
+			queue->peer = peer;
+			queue->push(peer->pendingQueues);
+		}
 	}
 	catch(const std::exception& ex)
 	{

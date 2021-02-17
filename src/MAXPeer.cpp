@@ -29,6 +29,8 @@
 
 #include "MAXPeer.h"
 #include "MAXCentral.h"
+#include "MAXDeviceTypes.h"
+#include "VirtualPeers/BcTcCWm.h"
 #include "GD.h"
 
 #include <iomanip>
@@ -564,6 +566,33 @@ void MAXPeer::unserializePeers(std::shared_ptr<std::vector<char>> serializedData
     {
     	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
+}
+
+uint64_t MAXPeer::getVirtualPeerId()
+{
+	//Simple Copy of the implementation in BidCosPeer
+	_peersMutex.lock();
+	try
+	{
+		//As in BidCosPeer this is pretty dirty but should work as all virtual peers should be the same peer
+		for(std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator j = _peers.begin(); j!= _peers.end(); ++j)
+		{
+			for(std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>::iterator i = j->second.begin(); i!= j->second.end(); i++)
+			{
+				if((*i)->isVirtual)
+				{
+					_peersMutex.unlock();
+					return (*i)->id;
+				}
+			}
+		}
+	}
+	catch(const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	_peersMutex.unlock();
+	return 0;
 }
 
 std::string MAXPeer::printConfig()
@@ -1224,11 +1253,49 @@ PVariable MAXPeer::setInterface(BaseLib::PRpcClientInfo clientInfo, std::string 
     return Variable::createError(-32500, "Unknown application error.");
 }
 
+bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable value)
+{
+	if(_deviceType == (uint32_t)DeviceType::BCRTTRXCYG3 && valueKey == "WINDOW_SWITCH")
+	{
+		_peersMutex.lock();
+		std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator peersIterator = _peers.find(3);
+		if(peersIterator == _peers.end() || peersIterator->second.empty() || !peersIterator->second.at(0)->isVirtual)
+		{
+			_peersMutex.unlock();
+			return false;
+		}
+		std::shared_ptr<BaseLib::Systems::BasicPeer> remotePeer = peersIterator->second.at(0);
+		_peersMutex.unlock();
+		if(!remotePeer->peer)
+		{
+			remotePeer->peer = getCentral()->getPeer(remotePeer->id);
+			if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; 	// I think the paired peer from Flole's code doesn't have a type so I need to check something els here.
+		}
+		if(remotePeer->peer)
+		{
+			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; //same as above
+			std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));
+			if(!tc) return false;
+			tc->setMeasuredTemperature(value->integerValue);
+			PParameter rpcParameter = valuesCentral[channel][valueKey].rpcParameter;
+			if(!rpcParameter) return false;
+			BaseLib::Systems::RpcConfigurationParameter& parameter = valuesCentral[channel][valueKey];
+			std::vector<uint8_t> parameterData;
+			rpcParameter->convertToPacket(value, parameter.mainRole(), parameterData);
+			parameter.setBinaryData(parameterData);
+			if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
+			else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
+			GD::out.printInfo("Info: Setting measured temperature of BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + " to " + std::to_string(value->integerValue) + "%.");
+			return true;
+		}
+	}
+}
+
 PVariable MAXPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value, bool wait)
 {
 	try
 	{
-		Peer::setValue(clientInfo, channel, valueKey, value, wait); //Ignore result, otherwise setHomegerValue might not be executed
+		Peer::setValue(clientInfo, channel, valueKey, value, wait); //Ignore result, otherwise setHomegearValue might not be executed
 		if(_disposing) return Variable::createError(-32500, "Peer is disposing.");
 		if(valueKey.empty()) return Variable::createError(-5, "Value key is empty.");
 		if(channel == 0 && serviceMessages->set(valueKey, value->booleanValue)) return PVariable(new Variable(VariableType::tVoid));

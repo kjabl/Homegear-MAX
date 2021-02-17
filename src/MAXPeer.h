@@ -114,6 +114,10 @@ public:
 	PVariable setInterface(BaseLib::PRpcClientInfo clientInfo, std::string interfaceID);
 	virtual PVariable setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value, bool wait);
 	//End RPC methods
+
+	bool setHomegearValue(uint32_t channel, std::string valueKey, PVariable value);
+	uint64_t getVirtualPeerId();
+
 protected:
 	uint32_t _lastRSSIDevice = 0;
 	std::shared_ptr<IPhysicalInterface> _physicalInterface;

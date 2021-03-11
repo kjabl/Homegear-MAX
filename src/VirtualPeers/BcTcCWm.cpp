@@ -1,6 +1,7 @@
-#include "BcTcCWM.h"
+#include "BcTcCWm.h"
 #include <homegear-base/BaseLib.h>
 #include "../GD.h"
+#include "../MAXDeviceTypes.h"
 
 namespace MAX
 {
@@ -8,10 +9,9 @@ namespace MAX
 BcTcCWm::BcTcCWm(uint32_t parentID, IPeerEventSink* EventHandler) : MAXPeer(parentID, EventHandler)
 {
     init();
-    startDutyCycle(-1); //Peer is newly created
 }
 
-BcTcCWm::BcTcCWm(int32_t id, int32_t address, std::string serialNumber, uint32_t parentID, IPeerEventSink* eventHandler) : MAXPeer(id, address, serialNumber, parentID, eventHandler)
+BcTcCWm::BcTcCWm(uint32_t id, int32_t address, std::string serialNumber, uint32_t parentID, IPeerEventSink* eventHandler) : MAXPeer(id, address, serialNumber, parentID, eventHandler)
 {
     init();
 }
@@ -70,7 +70,7 @@ bool BcTcCWm::load(BaseLib::Systems::ICentral* device)
     }
     catch(const std::exception& e)
     {
-        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, e.what());
     }
     return false;
 }
@@ -80,7 +80,7 @@ void BcTcCWm::loadVariables(BaseLib::Systems::ICentral* device, std::shared_ptr<
     try
     {
         MAXPeer::loadVariables(device, rows);
-        for(BaseLib::Database::DataTable::iterator row = row->begin(); row != rows->end(); ++row)
+        for(BaseLib::Database::DataTable::iterator row = rows->begin(); row != rows->end(); ++row)
         {
             _variableDatabaseIDs[row->second.at(2)->intValue] = row->second.at(0)->intValue;
             switch(row->second.at(2)->intValue)
@@ -93,7 +93,7 @@ void BcTcCWm::loadVariables(BaseLib::Systems::ICentral* device, std::shared_ptr<
                 _measuredTemperature = row->second.at(3)->intValue;
                 break;
             case 1005:
-                _newMeasuredTemperatur = row->second.at(3)->intValue;
+                _newMeasuredTemperature = row->second.at(3)->intValue;
                 break;
             case 1006:
                 _lastDutyCycleEvent = row->second.at(3)->intValue;
@@ -104,7 +104,7 @@ void BcTcCWm::loadVariables(BaseLib::Systems::ICentral* device, std::shared_ptr<
             }
         }
         setDeviceType((uint32_t)DeviceType::BCTCCWM4);
-        startDutyCycle(calculateLastDutyCycleEvent());
+        //startDutyCycle(calculateLastDutyCycleEvent());
     }
     catch(const std::exception& ex)
     {
@@ -147,7 +147,7 @@ void BcTcCWm::setMeasuredTemperature(int32_t measuredTemperature)
     }
 }
 
-uint8_t BcTCCWm::encodeTemperature(int32_t temperature){
+uint8_t BcTcCWm::encodeTemperature(int32_t temperature){
     //Fill with logic to encode temperature
 }
 

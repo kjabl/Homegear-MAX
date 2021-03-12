@@ -131,7 +131,7 @@ void BcTcCWm::saveVariables()
 }
 
 
-void BcTcCWm::setMeasuredTemperature(int32_t measuredTemperature)
+void BcTcCWm::setMeasuredTemperature(float measuredTemperature)
 {
     try
     {
@@ -147,8 +147,29 @@ void BcTcCWm::setMeasuredTemperature(int32_t measuredTemperature)
     }
 }
 
-uint8_t BcTcCWm::encodeTemperature(int32_t temperature){
-    //Fill with logic to encode temperature
+uint32_t BcTcCWm::encodeTemperature(float temperature){
+    
+    //logic to encode temperature logic
+
+    // temperature is float but needs to be converted to int. So we need to multiply it by 10
+    uint32_t temperatureAsInt = (int)(temperature*10);
+    
+    // get paired valve drive to find out the actual desired temperature
+    MAXPeer valveDrive = this->getPeer(1);
+
+    
+
+    // get desired temperature from paired valve drive, we need to convert it from float to int
+    PParameter desiredParameter = valveDrive.valuesCentral[1]["SET_TEMPERATURE"].rpcParameter;
+    BaseLib::PVariable desiredTemperatureVariable = valveDrive.getValueFromDevice(&desiredParameter, 1, false);
+
+    // First bit is 9th bit of temperature, rest is desired temperature
+    uint32_t leftHalf = ((temperatureAsInt & 0x100)>>1) | (((uint32_t)(2*desiredTemperatureVariable->floatValue)) & 0x7F);
+    // We need the last 8 bits from temperature
+    uint32_t rightHalf = temperatureAsInt & 0xFF;
+    // Now encoded temperature (to be used as payload) is built by appending the binary values of temp and temp2. We only need the last 8 bits from the right half
+    uint32_t result = (leftHalf << 8) + (rightHalf & 0xFF);
+    return result;
 }
 
 }

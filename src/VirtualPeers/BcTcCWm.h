@@ -16,9 +16,9 @@ class BcTcCWm : public MAXPeer
 
     virtual bool isVirtual() {return true;}
 
-    void setMeasuredTemperature(int32_t measuredTemperature);
-    int32_t getNewMeasuredTemperature() {return _newMeasuredTemperature;}
-    uint8_t encodeTemperature(int32_t temperature);
+    void setMeasuredTemperature(float measuredTemperature);
+    float getNewMeasuredTemperature() {return _newMeasuredTemperature;}
+    uint32_t encodeTemperature(float temperature);
 
     protected:
     //In table variables

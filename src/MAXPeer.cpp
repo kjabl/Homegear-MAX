@@ -1255,10 +1255,14 @@ PVariable MAXPeer::setInterface(BaseLib::PRpcClientInfo clientInfo, std::string 
 
 bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable value)
 {
-	if(_deviceType == (uint32_t)DeviceType::BCRTTRXCYG3 && valueKey == "WINDOW_SWITCH")
+
+	// this needs a lot of work to be done. "RemotePeer" is not defined in this context, it has to be looked up first. I need to check again how it is done for bidCos
+
+	// Setting a measured temperature from a "Not MAX" temperature sensor
+	if(_deviceType == (uint32_t)DeviceType::BCRTTRXCYG3 && valueKey == "ACTUAL_TEMPERATURE")
 	{
 		_peersMutex.lock();
-		std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator peersIterator = _peers.find(3);
+		std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator peersIterator = _peers.find(3); // channel 3 for THERMALCONTROL_TC
 		if(peersIterator == _peers.end() || peersIterator->second.empty() || !peersIterator->second.at(0)->isVirtual)
 		{
 			_peersMutex.unlock();
@@ -1269,19 +1273,19 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 		if(!remotePeer->peer)
 		{
 			remotePeer->peer = getCentral()->getPeer(remotePeer->id);
-			if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; 	// I think the paired peer from Flole's code doesn't have a type so I need to check something els here.
+			if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; 	// Perhaps I should check if the paired peer is virtual, so I can't set it, if there is a real Wallthermostat paired
 		}
 		if(remotePeer->peer)
 		{
-			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; //same as above
+			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; // same as above
 			std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));
 			if(!tc) return false;
-			tc->setMeasuredTemperature(value->integerValue);
+			tc->setMeasuredTemperature(value->floatValue); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
 			PParameter rpcParameter = valuesCentral[channel][valueKey].rpcParameter;
 			if(!rpcParameter) return false;
 			BaseLib::Systems::RpcConfigurationParameter& parameter = valuesCentral[channel][valueKey];
 			std::vector<uint8_t> parameterData;
-			rpcParameter->convertToPacket(value, parameter.mainRole(), parameterData);
+			rpcParameter->convertToPacket(value, parameter.mainRole(), parameterData); 
 			parameter.setBinaryData(parameterData);
 			if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
 			else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);

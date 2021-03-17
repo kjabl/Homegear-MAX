@@ -1261,6 +1261,7 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 	// Setting a measured temperature from a "Not MAX" temperature sensor
 	if(_deviceType == (uint32_t)DeviceType::BCRTTRXCYG3 && valueKey == "ACTUAL_TEMPERATURE")
 	{
+		GD::out.printInfo("Info: Starting to set the measured temperature of BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + ". Getting the paired virtual peer.");
 		_peersMutex.lock();
 		std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator peersIterator = _peers.find(3); // channel 3 for THERMALCONTROL_TC
 		if(peersIterator == _peers.end() || peersIterator->second.empty() || !peersIterator->second.at(0)->isVirtual)
@@ -1273,15 +1274,24 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 		if(!remotePeer->peer)
 		{
 			remotePeer->peer = getCentral()->getPeer(remotePeer->id);
-			if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; 	// Perhaps I should check if the paired peer is virtual, so I can't set it, if there is a real Wallthermostat paired
+			if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; 	
 		}
 		if(remotePeer->peer)
 		{
-			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false; // same as above
-			std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));
-			if(!tc) return false;
-			tc->setMeasuredTemperature(value->floatValue); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
+			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false;
+			std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));	// tc is the virtual wallthermostat
+			if(!tc || !tc->isVirtual()) {
+				GD::out.printDebug("Error: Cannot set 'ACTUAL_TEMPERATURE' for BC-RT-TRX-CyG-3 with id " + std:to_string(_peerID) + " because it is paired to a real wallthermostat.");
+				return false; // abort if the paired peer is a real wallthermostat
+			} 
+			tc->setMeasuredTemperature(value->floatValue, _peerID); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
+			/*
 			PParameter rpcParameter = valuesCentral[channel][valueKey].rpcParameter;
+			uint32_t encodedTemperature = tc->encodeTemperature(value->floatValue);
+			// Problem: Packet erwartet vector mit 8bit integer, die codierte Temperatur enthält allerdings 16bit. Lsg: dem Vector die beiden Einzelteile mitgeben?
+			std::shared_ptr<MAXPacket> valuePacket(new MAXPacket(_messageCounter[0], 0x42, 0, tc->getAddress(), _address, payload, getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio)) // TODO: vervollständigen
+		
+			homeMaticBidCos template:
 			if(!rpcParameter) return false;
 			BaseLib::Systems::RpcConfigurationParameter& parameter = valuesCentral[channel][valueKey];
 			std::vector<uint8_t> parameterData;
@@ -1289,7 +1299,8 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 			parameter.setBinaryData(parameterData);
 			if(parameter.databaseId > 0) saveParameter(parameter.databaseId, parameterData);
 			else saveParameter(0, ParameterGroup::Type::Enum::variables, channel, valueKey, parameterData);
-			GD::out.printInfo("Info: Setting measured temperature of BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + " to " + std::to_string(value->integerValue) + "%.");
+			*/
+			GD::out.printInfo("Info: Setting measured temperature of BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + " to " + std::to_string(value->floatValue) + "°C.");
 			return true;
 		}
 	}

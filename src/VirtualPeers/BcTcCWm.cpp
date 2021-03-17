@@ -131,7 +131,7 @@ void BcTcCWm::saveVariables()
 }
 
 
-void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t vdPeerID)
+void BcTcCWm::setMeasuredTemperature(float& measuredTemperature, uint64_t& vdPeerID)
 {
     try
     {

@@ -16,7 +16,7 @@ class BcTcCWm : public MAXPeer
 
     virtual bool isVirtual() {return true;}
 
-    void setMeasuredTemperature(float measuredTemperature);
+    void setMeasuredTemperature(float& measuredTemperature, uint64_t& vdPeerID);
     float getNewMeasuredTemperature() {return _newMeasuredTemperature;}
     uint32_t encodeTemperature(float temperature);
 

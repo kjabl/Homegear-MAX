@@ -1281,7 +1281,7 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return false;
 			std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));	// tc is the virtual wallthermostat
 			if(!tc || !tc->isVirtual()) {
-				GD::out.printDebug("Error: Cannot set 'ACTUAL_TEMPERATURE' for BC-RT-TRX-CyG-3 with id " + std:to_string(_peerID) + " because it is paired to a real wallthermostat.");
+				GD::out.printDebug("Error: Cannot set 'ACTUAL_TEMPERATURE' for BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + " because it is paired to a real wallthermostat.");
 				return false; // abort if the paired peer is a real wallthermostat
 			} 
 			tc->setMeasuredTemperature(value->floatValue, _peerID); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess

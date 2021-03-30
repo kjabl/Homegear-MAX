@@ -1284,7 +1284,31 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 				GD::out.printDebug("Error: Cannot set 'ACTUAL_TEMPERATURE' for BC-RT-TRX-CyG-3 with id " + std::to_string(_peerID) + " because it is paired to a real wallthermostat.");
 				return false; // abort if the paired peer is a real wallthermostat
 			} 
-			tc->setMeasuredTemperature(value->floatValue, _peerID); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
+
+			// check if measured temperature is in valid range
+			float measuredTemperature = value->floatValue;
+			if (measuredTemperature < 0)
+            measuredTemperature = 0;
+        	if (measuredTemperature > 51)
+            measuredTemperature = 51;
+
+			// temperature is float but needs to be converted to int. So we need to multiply it by 10
+        	uint32_t temperatureAsInt = (int)(measuredTemperature * 10);
+			// get desired temperature from paired valve drive, we need to convert it from float to int
+			PParameter desiredParameter = valuesCentral[1]["SET_TEMPERATURE"].rpcParameter;
+			BaseLib::PVariable desiredTemperatureVariable = getValueFromDevice(desiredParameter, 1, false);
+
+			// build payload
+			std::vector<uint8_t> payload;
+			payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * desiredTemperatureVariable->floatValue)) & 0x7F));
+			payload.push_back(temperatureAsInt & 0xFF);
+
+			// now build and send the packet
+        	std::shared_ptr<MAXPacket> packet(new MAXPacket(_messageCounter, 0x42, 0, tc->getAddress(), getAddress(), payload, getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
+        	std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(getCentral());
+        	central->sendPacket(getPhysicalInterface(), packet);
+
+			//tc->setMeasuredTemperature(value->floatValue, _peerID); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
 			/*
 			PParameter rpcParameter = valuesCentral[channel][valueKey].rpcParameter;
 			uint32_t encodedTemperature = tc->encodeTemperature(value->floatValue);

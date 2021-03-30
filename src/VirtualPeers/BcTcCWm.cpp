@@ -130,46 +130,46 @@ void BcTcCWm::saveVariables()
     
 }
 
-
-void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t& vdPeerID)
+/*void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t &vdPeerID)
 {
     try
     {
-    //Valid range for measured temperature is 0 - 51.1 degree, so we have to check/correct this
-    if(measuredTemperature < 0) measuredTemperature = 0;
-    if (measuredTemperature > 51) measuredTemperature = 51;
-    _newMeasuredTemperature = measuredTemperature;
-    saveVariable(1005, _newMeasuredTemperature);   
+        //Valid range for measured temperature is 0 - 51.1 degree, so we have to check/correct this
+        if (measuredTemperature < 0)
+            measuredTemperature = 0;
+        if (measuredTemperature > 51)
+            measuredTemperature = 51;
+        _newMeasuredTemperature = measuredTemperature;
+        saveVariable(1005, _newMeasuredTemperature);
 
-    // optional: integrate a check, if the temperature changed enough to send it again.
-    
-    // next step: encode it, build packet and send it
-    // temperature is float but needs to be converted to int. So we need to multiply it by 10
-    uint32_t temperatureAsInt = (int)(measuredTemperature*10);
-    // get paired valve drive to find out the actual desired temperature
-    std::shared_ptr<MAXPeer> valveDrive = getCentral()->getPeer(vdPeerID);
-    // get desired temperature from paired valve drive, we need to convert it from float to int
-    PParameter desiredParameter = valveDrive->valuesCentral[1]["SET_TEMPERATURE"].rpcParameter;
-    BaseLib::PVariable desiredTemperatureVariable = valveDrive->getValueFromDevice(&desiredParameter, 1, false);
+        // optional: integrate a check, if the temperature changed enough to send it again.
 
-    // build payload
-    std::vector<uint8_t> payload;
-    payload.push_back(((temperatureAsInt & 0x100)>>1) | (((uint32_t)(2*desiredTemperatureVariable->floatValue)) & 0x7F));
-    payload.push_back(temperatureAsInt & 0xFF);
+        // next step: encode it, build packet and send it
+        // temperature is float but needs to be converted to int. So we need to multiply it by 10
+        uint32_t temperatureAsInt = (int)(measuredTemperature * 10);
+        // get paired valve drive to find out the actual desired temperature
+        std::shared_ptr<MAXPeer> valveDrive = std::dynamic_pointer_cast<MAXPeer>(getPeer(1, vdPeerID, 3));
+        // get desired temperature from paired valve drive, we need to convert it from float to int
+        PParameter desiredParameter = valveDrive->valuesCentral[1]["SET_TEMPERATURE"].rpcParameter;
+        BaseLib::PVariable desiredTemperatureVariable = valveDrive->getValueFromDevice(&desiredParameter, 1, false);
 
-    // now build and send the packet
-    std::shared_ptr<MAXPacket> packet(new MAXPacket(valveDrive.getMessageCounter()[0], 0x42, 0, this->getAddress(), valveDrive->getAddress(), payload, valveDrive->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
-    std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(valveDrive->getCentral());
-    central->sendPacket(valveDrive->getPhysicalInterface(), packet);
+        // build payload
+        std::vector<uint8_t> payload;
+        payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * desiredTemperatureVariable->floatValue)) & 0x7F));
+        payload.push_back(temperatureAsInt & 0xFF);
 
+        // now build and send the packet
+        std::shared_ptr<MAXPacket> packet(new MAXPacket(valveDrive.getMessageCounter()[0], 0x42, 0, this->getAddress(), valveDrive->getAddress(), payload, valveDrive->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
+        std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(valveDrive->getCentral());
+        central->sendPacket(valveDrive->getPhysicalInterface(), packet);
     }
-    catch (const std::exception& ex)
+    catch (const std::exception &ex)
     {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-}
+}*/
 
-uint32_t BcTcCWm::encodeTemperature(float temperature){
+/*uint32_t BcTcCWm::encodeTemperature(float temperature){
     
     //logic to encode temperature logic
 
@@ -192,6 +192,6 @@ uint32_t BcTcCWm::encodeTemperature(float temperature){
     // Now encoded temperature (to be used as payload) is built by appending the binary values of temp and temp2. We only need the last 8 bits from the right half
     uint32_t result = (leftHalf << 8) + (rightHalf & 0xFF);
     return result;
-}
+}*/
 
 }

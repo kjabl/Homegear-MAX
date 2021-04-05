@@ -4457,7 +4457,7 @@
 		<variables id="switch_ch_values--1">
 			<parameter id="ACTUAL_TEMPERATURE">
 				<properties>
-					<writeable>false</writeable>
+					<writeable>true</writeable>
 					<signed>true</signed>
 					<control>HEATING_CONTROL.TEMPERATURE</control>
 					<unit>°C</unit>

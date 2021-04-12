@@ -1253,10 +1253,8 @@ PVariable MAXPeer::setInterface(BaseLib::PRpcClientInfo clientInfo, std::string 
     return Variable::createError(-32500, "Unknown application error.");
 }
 
-bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable value)
+bool MAXPeer::setHomegearValue(PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value)
 {
-
-	// this needs a lot of work to be done. "RemotePeer" is not defined in this context, it has to be looked up first. I need to check again how it is done for bidCos
 
 	// Setting a measured temperature from a "Not MAX" temperature sensor
 	GD::out.printInfo("Starting to set a Homegear Value for peer: " + std::to_string(_peerID) + ".");
@@ -1290,45 +1288,32 @@ bool MAXPeer::setHomegearValue(uint32_t channel, std::string valueKey, PVariable
 			float measuredTemperature = value->floatValue;
 			if (measuredTemperature < 0)
             measuredTemperature = 0;
-        	if (measuredTemperature > 51)
-            measuredTemperature = 51;
+        	if (measuredTemperature > 50)
+            measuredTemperature = 50;
 			GD::out.printDebug("Measured temperature to be set is: " + std::to_string(measuredTemperature) + ".");
 
 			// temperature is float but needs to be converted to int. So we need to multiply it by 10
         	uint32_t temperatureAsInt = (int)(measuredTemperature * 10);
 			GD::out.printDebug("Measured temperature as int is: " + std::to_string(temperatureAsInt) + ".");
 			
-			std::vector<uint8_t> payload;
-
-			// Testing purposes
-			if(measuredTemperature == 15.0) {
-				payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * 20.0)) & 0x7F));
-				GD::out.printDebug("Measured temperature was set at 15.0, so we are using a desiredTemperature of 20.0 for testing purposes.");
-
-			} else
-			{
-				// get desired temperature from paired valve drive, we need to convert it from float to int
-				PParameter desiredParameter = valuesCentral[1]["SET_TEMPERATURE"].rpcParameter;
-				BaseLib::PVariable desiredTemperatureVariable = getValueFromDevice(desiredParameter, 1, true);
-
-				GD::out.printDebug("The desired Temperature from device is: " + std::to_string(desiredTemperatureVariable->floatValue) + ".");
-				GD::out.printDebug("Desired Temperature int value would be: " + std::to_string(desiredTemperatureVariable->integerValue) + ".");
-
-				payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * desiredTemperatureVariable->floatValue)) & 0x7F));
-				
-			}
-			
 			
 
+			// PParameter desiredParameter = 
+			BaseLib::PVariable desiredTemperatureVariable = getValue(clientInfo, 1, "SET_TEMPERATURE", false, true);
+			//getValueFromDevice(desiredParameter, 1, true);
+			GD::out.printDebug("The desired Temperature from device is: " + std::to_string(desiredTemperatureVariable->floatValue) + ".");
+			
+			
 			// build payload
-			
+			std::vector<uint8_t> payload;
+			payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * desiredTemperatureVariable->floatValue)) & 0x7F));
 			payload.push_back(temperatureAsInt & 0xFF);
 
-
 			// now build and send the packet
-        	std::shared_ptr<MAXPacket> packet(new MAXPacket(_messageCounter, 0x42, 0, tc->getAddress(), getAddress(), payload, getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
+        	std::shared_ptr<MAXPacket> packet(new MAXPacket(tc->_messageCounter, 0x42, 0, tc->getAddress(), getAddress(), payload, getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
         	std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(getCentral());
         	central->sendPacket(getPhysicalInterface(), packet);
+			tc->_messageCounter++;
 
 			//tc->setMeasuredTemperature(value->floatValue, _peerID); // this is where the method of my virtual device is invoked. The method should then go on, encode the value create a packet and send it I guess
 			/*
@@ -1363,7 +1348,7 @@ PVariable MAXPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel
 		if(channel == 0 && serviceMessages->set(valueKey, value->booleanValue)) return PVariable(new Variable(VariableType::tVoid));
 		std::unordered_map<uint32_t, std::unordered_map<std::string, RpcConfigurationParameter>>::iterator channelIterator = valuesCentral.find(channel);
 		if(channelIterator == valuesCentral.end()) return Variable::createError(-2, "Unknown channel.");
-		if(setHomegearValue(channel, valueKey, value)) return PVariable(new Variable(VariableType::tVoid));
+		if(setHomegearValue(clientInfo, channel, valueKey, value)) return PVariable(new Variable(VariableType::tVoid));
 		std::unordered_map<std::string, RpcConfigurationParameter>::iterator parameterIterator = channelIterator->second.find(valueKey);
 		if(parameterIterator == valuesCentral[channel].end()) return Variable::createError(-5, "Unknown parameter.");
 		PParameter rpcParameter = parameterIterator->second.rpcParameter;

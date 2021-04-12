@@ -1185,18 +1185,22 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 {
 	try
 	{
-		//virtuellen MAXPeer erzeugen, hier: Einen virtuellen Wandthermostat
-		std::shared_ptr<MAXPeer> wt;
+		// get Virtual Peer by fixed
+		std::shared_ptr<MAXPeer> wt = getPeer(VIRTUAL_WT_ADDRESS);
+		/* old, for the auto-ack performed by CUL I need a fixed address for fake wall thermostat, so I shouldn't use different virtual devices because they would need to have the same address
 		uint64_t wtId = peer->getVirtualPeerId();
-		if(wtId != 0) wt = getPeer(wtId);
+		if(wtId != 0) wt = getPeer(wtId); */
+
+		// check if peer already exists
 		if(!wt)
 		{
-			int32_t wtAddress = getUniqueAddress((0x39 << 16) + (peer->getAddress() & 0xFF00) + (peer->getAddress() & 0xFF)); //simply copied from HomeMaticCentral
-			if(peer->hasPeers(3) && !peer->getPeer(3, wtId)) return; //Channel 3 for THERMALCONTROL_TC, check if already linked to another Peer on this channel
+			// if there is not one virtual wall thermostat, create one
+			int32_t wtAddress = VIRTUAL_WT_ADDRESS;
+			// if(peer->hasPeers(3) && !peer->getPeer(3, wtId)) return; //Channel 3 for THERMALCONTROL_TC, check if already linked to another Peer on this channel
 			std::string temp = peer->getSerialNumber().substr(3);
 			std::string serialNumber = getUniqueSerialNumber("VMD", BaseLib::Math::getNumber(temp));
 			wt.reset(new BcTcCWm(_deviceId, this));
-			wt->setAddress(wtAddress);
+			wt->setAddress(VIRTUAL_WT_ADDRESS);
 			wt->setFirmwareVersion(0x10);	//TODO: Which version is necessary/working here?
 			wt->setDeviceType((uint32_t)DeviceType::BCTCCWM4);
 			wt->setSerialNumber(serialNumber);
@@ -1223,13 +1227,12 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 				_peersMutex.unlock();
 				GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 			}
-			std::shared_ptr<BaseLib::Systems::BasicPeer> bcrttrxcyg(new BaseLib::Systems::BasicPeer());
-			bcrttrxcyg->id = peer->getID();
-			bcrttrxcyg->address = peer->getAddress();
-			bcrttrxcyg->serialNumber = peer->getSerialNumber();
-			bcrttrxcyg->channel = 3; //Target channel for THERMALCONTROL_TC
-			wt->addPeer(1, bcrttrxcyg);
 		}
+
+		// we have a virtual peer now (either created or found an existing one)
+		// So let's pair it to our actual peer
+
+		// Sender peer = virtual
 		std::shared_ptr<BaseLib::Systems::BasicPeer> bctccwm(new BaseLib::Systems::BasicPeer());
 		bctccwm->id = wt->getID();
 		bctccwm->address = wt->getAddress();
@@ -1237,31 +1240,41 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 		bctccwm->channel = 1;
 		bctccwm->isSender = true;
 		bctccwm->isVirtual = true;
-		peer->addPeer(3, bctccwm);
+		
+		// Receiver Peer = real
+		std::shared_ptr<BaseLib::Systems::BasicPeer> bcrttrxcyg(new BaseLib::Systems::BasicPeer());
+		bcrttrxcyg->id = peer->getID();
+		bcrttrxcyg->address = peer->getAddress();
+		bcrttrxcyg->serialNumber = peer->getSerialNumber();
+		bcrttrxcyg->channel = 3; //Target channel for THERMALCONTROL_TC
+		bcrttrxcyg->isSender = false;
+		
+		wt->addPeer(1, bcrttrxcyg);
+		bcrttrxcyg->addPeer(3, bctccwm);
 
-		std::shared_ptr<PacketQueue> pendingQueue(new PacketQueue(peer->getPhysicalInterface(), PacketQueueType::CONFIG));
+		std::shared_ptr<PacketQueue> pendingQueue(new PacketQueue(bcrttrxcyg->getPhysicalInterface(), PacketQueueType::CONFIG));
 		pendingQueue->noSending = true;
 
 		std::vector<uint8_t> payload;
 		//CONFIG_ADD_PEER
 		payload.push_back(0);
-		payload.push_back(peer->getAddress() >> 16);
-		payload.push_back((peer->getAddress() >> 8)& 0xFF);
-		payload.push_back(peer->getAddress() & 0xFF);
-		payload.push_back(0x01); //virtual Wallthermostat bctccwm is sending from channel 1
-		std::shared_ptr<MAXPacket> configPacket(new MAXPacket(_messageCounter[0], 0x20, 0, _address, peer->getAddress(), payload, peer->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
+		payload.push_back(bctccwm->getAddress() >> 16);
+		payload.push_back((bctccwm->getAddress() >> 8)& 0xFF);
+		payload.push_back(bctccwm->getAddress() & 0xFF);
+		payload.push_back(1); //virtual Wallthermostat bctccwm is sending from channel 1
+		std::shared_ptr<MAXPacket> configPacket(new MAXPacket(_messageCounter[0], 0x20, 0, _address, bcrttrxcyg->getAddress(), payload, bcrttrxcyg->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
 		pendingQueue->push(configPacket);
 		pendingQueue->push(_messages->find(0x02, 0x02, std::vector<std::pair<uint32_t, int32_t>>()));
 		_messageCounter[0]++;
 
-		peer->pendingQueues->push(pendingQueue);
-		peer->serviceMessages->setConfigPending(true);
+		bcrttrxcyg->pendingQueues->push(pendingQueue);
+		bcrttrxcyg->serviceMessages->setConfigPending(true);
 
-		if((peer->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio) || (peer->getRXModes() & HomegearDevice::ReceiveModes::always))
+		if((bcrttrxcyg->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio) || (bcrttrxcyg->getRXModes() & HomegearDevice::ReceiveModes::always))
 		{
-			std::shared_ptr<PacketQueue> queue = _queueManager.createQueue(peer->getPhysicalInterface(), PacketQueueType::CONFIG, peer->getAddress());
-			queue->peer = peer;
-			queue->push(peer->pendingQueues);
+			std::shared_ptr<PacketQueue> queue = _queueManager.createQueue(bcrttrxcyg->getPhysicalInterface(), PacketQueueType::CONFIG, bcrttrxcyg->getAddress());
+			queue->peer = bcrttrxcyg;
+			queue->push(bcrttrxcyg->pendingQueues);
 		}
 	}
 	catch(const std::exception& ex)

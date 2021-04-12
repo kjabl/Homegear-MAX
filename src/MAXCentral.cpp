@@ -1252,7 +1252,7 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 		wt->addPeer(1, bcrttrxcyg);
 		peer->addPeer(3, bctccwm);
 
-		std::shared_ptr<PacketQueue> pendingQueue(new PacketQueue(bcrttrxcyg->getPhysicalInterface(), PacketQueueType::CONFIG));
+		std::shared_ptr<PacketQueue> pendingQueue(new PacketQueue(peer->getPhysicalInterface(), PacketQueueType::CONFIG));
 		pendingQueue->noSending = true;
 
 		std::vector<uint8_t> payload;

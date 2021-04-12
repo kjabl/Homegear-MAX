@@ -46,6 +46,7 @@
 				</linkReceiverFunctionTypes>
 			</properties>
 			<configParameters>config--4</configParameters>
+			<variables>switch_ch_values--4</variables>
 		</function>
 	</functions>
 	<packets>
@@ -4473,7 +4474,7 @@
 				</logicalDecimal>
 				<physicalInteger groupId="ACTUAL_TEMPERATURE">
 					<size>1.2</size>
-					<operationType>command</operationType>
+					<operationType>store</operationType>
 				</physicalInteger>
 				<packets>
 					<packet id="INFO_LEVEL">
@@ -5124,6 +5125,24 @@
 						<type>event</type>
 					</packet>
 					<packet id="INFO_LEVEL_PARTY">
+						<type>event</type>
+					</packet>
+				</packets>
+			</parameter>
+		</variables>
+		<variables id="switch_ch_values--4">
+			<parameter id="WINDOW_STATE">
+				<properties>
+					<writeable>true</writeable>
+					<control>DOOR_SENSOR.STATE</control>
+				</properties>
+				<logicalBoolean/>
+				<physicalInteger groupId="STATE">
+					<size>0.2</size>
+					<operationType>command</operationType>
+				</physicalInteger>
+				<packets>
+					<packet id="EVENT">
 						<type>event</type>
 					</packet>
 				</packets>

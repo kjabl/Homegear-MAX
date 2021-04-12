@@ -115,7 +115,7 @@ public:
 	virtual PVariable setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value, bool wait);
 	//End RPC methods
 
-	bool setHomegearValue(uint32_t channel, std::string valueKey, PVariable value);
+	bool setHomegearValue(PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value);
 	uint64_t getVirtualPeerId();
 
 protected:

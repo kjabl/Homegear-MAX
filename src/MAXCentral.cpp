@@ -1258,9 +1258,9 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 		std::vector<uint8_t> payload;
 		//CONFIG_ADD_PEER
 		payload.push_back(0);
-		payload.push_back(bctccwm->getAddress() >> 16);
-		payload.push_back((bctccwm->getAddress() >> 8)& 0xFF);
-		payload.push_back(bctccwm->getAddress() & 0xFF);
+		payload.push_back(wt->getAddress() >> 16);
+		payload.push_back((wt->getAddress() >> 8)& 0xFF);
+		payload.push_back(wt->getAddress() & 0xFF);
 		payload.push_back(1); //virtual Wallthermostat bctccwm is sending from channel 1
 		std::shared_ptr<MAXPacket> configPacket(new MAXPacket(_messageCounter[0], 0x20, 0, _address, peer->getAddress(), payload, peer->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
 		pendingQueue->push(configPacket);

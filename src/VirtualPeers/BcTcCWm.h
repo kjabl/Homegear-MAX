@@ -19,6 +19,8 @@ class BcTcCWm : public MAXPeer
     void setMeasuredTemperature(float measuredTemperature, uint64_t& vdPeerID);
     float getNewMeasuredTemperature() {return _newMeasuredTemperature;}
     uint32_t encodeTemperature(float temperature);
+    void handleWakeUp(int32_t valveDriveAddress, uint8_t messageCounter);
+    float getDesiredTemperature(int32_t valveDriveAddress);
 
     protected:
     //In table variables
@@ -42,6 +44,8 @@ class BcTcCWm : public MAXPeer
     virtual bool load(BaseLib::Systems::ICentral* device);
     virtual void loadVariables(BaseLib::Systems::ICentral* device, std::shared_ptr<BaseLib::Database::DataTable>& rows);
     virtual void saveVariables();
+    std::shared_ptr<MAXPacket> buildFakePacket(int32_t measuredTemperature, int32_t desiredTemperature, int32_t valveDriveAddress, bool burst);
+    std::shared_ptr<MAXPacket> buildFakePacket(float measuredTemperature, float desiredTemperature, int32_t valveDriveAddress, bool burst);
 
     void setDecalcification();  //TODO: wird ggf. nicht gebraucht, da Decalcification bereits so gesetzt werden kann?
 

@@ -39,7 +39,8 @@ namespace MAX
 		none = 					0xFFFFFFFF,
 		BCTSSWPL =				0x01AA,
 		BCRTTRXCYG3 =			0x01A0,
-		BCTCCWM4 =				0x3FF
+		BCTCCWM4 =				0x3FF,
+		BCSCRDWM =				0x40F
 	};
 }
 #endif

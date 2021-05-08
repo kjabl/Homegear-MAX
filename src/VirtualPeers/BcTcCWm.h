@@ -17,17 +17,14 @@ class BcTcCWm : public MAXPeer
     virtual bool isVirtual() {return true;}
 
     void setMeasuredTemperature(float measuredTemperature, uint64_t& vdPeerID);
-    float getNewMeasuredTemperature() {return _newMeasuredTemperature;}
+    //float getNewMeasuredTemperature() {return _newMeasuredTemperature;}
     uint32_t encodeTemperature(float temperature);
     void handleWakeUp(int32_t valveDriveAddress, uint8_t messageCounter);
-    float getDesiredTemperature(int32_t valveDriveAddress);
 
     protected:
     //In table variables
-    int32_t _currentDutyCycleDeviceAddress = -1;
     int32_t _measuredTemperature = 0;
     int32_t _newMeasuredTemperature = 0;
-    int64_t _lastDutyCycleEvent = 0;
     //end in table variables
 
     std::unordered_map<int32_t, bool> _decalcification;

@@ -1,5 +1,6 @@
 #include "BcTcCWm.h"
 #include <homegear-base/BaseLib.h>
+#include "MAXCentral.h"
 #include "../GD.h"
 #include "../MAXDeviceTypes.h"
 
@@ -118,85 +119,34 @@ void BcTcCWm::saveVariables()
 
 void BcTcCWm::handleWakeUp(int32_t valveDriveAddress, uint8_t messageCounter) {
 
+    GD::out.printDebug("Starting to handle debug packet.");
     try
     {
         // got WakeUp Packet from Valve Drive, need to answer with a normal package so it knows the wallthermostats still exists
-        std::shared_ptr<MAXPeer> valveDrive = dynamic_pointer_cast<MAXPeer>(getPeer(1, valveDriveAddress, 3));
+        std::shared_ptr<MAXPeer> valveDrive = std::dynamic_pointer_cast<MAXPeer>(getPeer(1, valveDriveAddress, 3));
+        if(!valveDrive) {
+            GD::out.printDebug("Didn't find real valve drive to handle wakeup packet for.");
+            return;
+        }
         
         // aktuelle desiredTemperature vom Gerät besorgen -> noch erfragen wie das funktioniert
-        int32_t desiredTemperature = (int) (getDesiredTemperature(valveDriveAddress)*2);
+        int32_t desiredTemperature = (int) (valveDrive->getTemperatureFromWeekplan()*2);
+        GD::out.printDebug("Desired temperature from weekplan is: "+std::to_string(desiredTemperature));
 
         // If we are quick enough we don't need WoR so we can save credits
         // lets do it like fhem does:
         std::vector<uint8_t> payload;
-        payload.push_back(71937); // FHEM uses "011901" as a hex string. This is the corresponding value
-        std::shared_ptr<MAXPacket> packet = new MAXPacket(messageCounter, 0x02, 0x02, _address, valveDriveAddress, payload, false);
-        std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(getCentral());
-        central->sendPacket(getPhysicalInterface(), packet);
+        payload.push_back(71937); // FHEM uses "011901" as a hex string. This is the corresponding value. mode=auto
+        payload.push_back(desiredTemperature & 0x7F);
+        std::shared_ptr<MAXPacket> packet (new MAXPacket(messageCounter, 0x02, 0x04, _address, valveDriveAddress, payload, false));
+        GD::out.printDebug("Handling WakeUp from Valve Drive: "+std::to_string(valveDriveAddress)+". Package to be sent: "+packet->hexString());
+        std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(valveDrive->getCentral());
+        central->sendPacket(valveDrive->getPhysicalInterface(), packet);
     }
     catch (const std::exception &ex)
     {
         GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-}
-
-float BcTcCWm::getDesiredTemperature(int32_t valveDriveAddress) {
-    // Method is used to get the desiredTemperature from schedule in device
-
-    // Perhaps this could be done easier
-    time_t timer;
-    struct tm * timeinfo;
-    time (&timer);
-    timeinfo = localtime (&timer);
-    int16_t wday = timeinfo->tm_wday;   
-    std::string daystr;
-
-    // get ValveDrivePeer
-    std::shared_ptr<MAXPeer> valveDrive = dynamic_pointer_cast<MAXPeer>(getPeer(1, valveDriveAddress, 3));
-
-    BaseLib::DeviceDescription::PParameterGroup paramset = valveDrive->getParameterSet(0, BaseLib::DeviceDescription::ParameterGroup::Type::Enum::config);
-    // get the actual day
-    switch (wday)
-    {
-    case 0:
-        daystr = "MONDAY"
-        break;
-    case 1:
-        daystr = "TUESDAY"
-        break;
-    case 2:
-        daystr = "WEDNESDAY"
-        break;
-    case 3:
-        daystr = "THURSDAY"
-        break;
-    case 4:
-        daystr = "FRIDAY"
-        break;
-    case 5:
-        daystr = "SATURDAY"
-        break;
-    case 6:
-        daystr = "SUNDAY"
-        break;
-    }
-
-    
-    // find the right timespot
-    BaseLib::DeviceDescription::Parameter param;
-    int32_t minutes = timeinfo->tm_min;
-    float desiredTemp;
-    for (size_t i = 1; i < 14; i++)
-    {
-        param = paramset->getParameter("ENDTIME_"+daystr+"_"+std::to_string(i));
-        if(valveDrive->getValueFromDevice(&param, 0, true)->integerValue > minutes) {
-            // found the timespot, getting temperature now
-            param = paramset->getParameter("TEMPERATURE_"+daystr+"_"+std::to_string(i));
-            desiredTemp = valveDrive->getValueFromDevice(&param, 0, true);
-            break;
-        }
-    }
-    return desiredTemp; 
 }
 
 std::shared_ptr<MAXPacket> BcTcCWm::buildFakePacket(int32_t measuredTemperature, int32_t desiredTemperature,
@@ -225,7 +175,7 @@ std::shared_ptr<MAXPacket> BcTcCWm::buildFakePacket(float measuredTemperature, f
     buildFakePacket(measuredTemperatureAsInt, desiredTemperatureAsInt, valveDriveAddress, burst);
 }
 
-void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t &vdPeerID, PRpcClientInfo clientInfo)
+void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t &vdPeerID)
 {
     try
     {
@@ -239,7 +189,7 @@ void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t &vdPeer
 
         // checking if temperature changed enough. I should integrate a config parameter for this. But I don't know how at the moment.
         if(abs(measuredTemperature-_measuredTemperature) < 0.2) {
-            GD::out.printInfo("New measured temperature for Valve drive with Peer ID" + std::to_string(vdPeerID) + "is too small. Won't send it to save credits. Old: " + std::to_string(_measuredTemperature) + " New: " + std::to_string(_newMeasuredTemperature) + ".");
+            GD::out.printInfo("New measured temperature for Valve drive with Peer ID" + std::to_string(vdPeerID) + "didn't change enough. Won't send it to save credits. Old: " + std::to_string(_measuredTemperature) + " New: " + std::to_string(_newMeasuredTemperature) + ".");
             return;
         }
         // temperature is float but needs to be converted to int. So we need to multiply it by 10
@@ -249,12 +199,14 @@ void BcTcCWm::setMeasuredTemperature(float measuredTemperature, uint64_t &vdPeer
         // get paired valve drive to find out the actual desired temperature
         std::shared_ptr<MAXPeer> valveDrive = std::dynamic_pointer_cast<MAXPeer>(getPeer(1, vdPeerID, 3));
         // get desired temperature from paired valve drive, we need to convert it from float to int
-        BaseLib::PVariable desiredTemperatureVariable = getValue(clientInfo, 1, "SET_TEMPERATURE", false, true); // how can I do this in a different way???
+        // BaseLib::PVariable desiredTemperatureVariable = getValue(clientInfo, 1, "SET_TEMPERATURE", false, true); // how can I do this in a different way???
+        // get desired Temperature from schedule
+        float desiredTemperature = valveDrive->getTemperatureFromWeekplan();
         
         // now build and send the packet
-        std::shared_ptr<MAXPacket> packet = buildFakePacket(measuredTemperature, desiredTemperatureVariable->floatValue, valveDrive->getAddress(), valveDrive->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio));
-        GD::out.printDebug("Sending fake Wallthermostat packet from Peer: " + std::to_string(_peerID) + " to valve drive with ID: " + valveDrive->getAddress() + "with desired Temperature: " + std::to_string(desiredTemperatureVariable->floatValue) + " and measured temperature: " + std::to_string(measuredTemperature));
-        std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(valveDrive->getCentral());
+        std::shared_ptr<MAXPacket> packet = buildFakePacket(measuredTemperature, desiredTemperature, valveDrive->getAddress(), valveDrive->getRXModes() & HomegearDevice::ReceiveModes::wakeOnRadio);
+        GD::out.printDebug("Sending fake Wallthermostat packet from Peer: " + std::to_string(_peerID) + " to valve drive with Address: " + std::to_string(valveDrive->getAddress()) + "\nwith desired Temperature: " + std::to_string(desiredTemperature) + " \nand measured temperature: " + std::to_string(measuredTemperature)+"\n packet string is: "+packet->hexString());
+        std::shared_ptr<MAXCentral> central = std::dynamic_pointer_cast<MAXCentral>(getCentral());
         central->sendPacket(valveDrive->getPhysicalInterface(), packet);
         _messageCounter++;
     }

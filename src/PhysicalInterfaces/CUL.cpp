@@ -185,8 +185,8 @@ void CUL::setupDevice()
 			}
 		}
 		// Adding our fake Wallthermostat address to the CUL. This is needed for emulating a MAX Wallthermostat
-		GD::out.printDebug("Setting fake Wallthermostat addess in CUL to 111111.");
-		writeToDevice("Zw111111\n", false);
+		// GD::out.printDebug("Setting fake Wallthermostat addess in CUL to 111111.");
+		// writeToDevice("Zw111111\n", false);
 	}
 	catch(const std::exception& ex)
     {

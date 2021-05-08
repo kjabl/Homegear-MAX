@@ -116,7 +116,9 @@ public:
 	//End RPC methods
 
 	bool setHomegearValue(PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value);
+	float getTemperatureFromWeekplan();
 	uint64_t getVirtualPeerId();
+	virtual std::shared_ptr<BaseLib::Systems::ICentral> getCentral();
 
 protected:
 	uint32_t _lastRSSIDevice = 0;

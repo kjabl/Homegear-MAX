@@ -102,6 +102,8 @@ public:
 	virtual PVariable removeLink(BaseLib::PRpcClientInfo clientInfo, uint64_t senderID, int32_t senderChannel, uint64_t receiverID, int32_t receiverChannel);
 	virtual PVariable setInstallMode(BaseLib::PRpcClientInfo clientInfo, bool on, uint32_t duration, BaseLib::PVariable metadata, bool debugOutput = true);
 	virtual PVariable setInterface(BaseLib::PRpcClientInfo clientInfo, uint64_t peerID, std::string interfaceID);
+
+	void addHomegearFeaturesValveDrive(uint64_t id); // for adding features via commandline
 protected:
 	//In table variables
 	int32_t _centralAddress = 0;

@@ -242,11 +242,28 @@ std::shared_ptr<IPhysicalInterface> MAXCentral::getPhysicalInterface(int32_t pee
 bool MAXCentral::onPacketReceived(std::string& senderID, std::shared_ptr<BaseLib::Systems::Packet> packet)
 {
 	try
-	{
+	{	
 		if(_disposing) return false;
 		std::shared_ptr<MAXPacket> maxPacket(std::dynamic_pointer_cast<MAXPacket>(packet));
 		if(!maxPacket) return false;
 		if(GD::bl->debugLevel >= 4) std::cout << BaseLib::HelperFunctions::getTimeString(maxPacket->getTimeReceived()) << " MAX packet received (" + senderID + (maxPacket->rssiDevice() ? ", RSSI: 0x" + _bl->hf.getHexString(maxPacket->rssiDevice(), 2) : "") + "): " + maxPacket->hexString() << std::endl;
+		
+		// Here is a point to step in and handle a fake device packet
+		GD::out.printDebug("Handling a received packet.");
+		if (maxPacket->messageType() == 0xF1)
+		{
+			GD::out.printDebug("Found WakeUp packet from:"+std::to_string(maxPacket->senderAddress())+" to: "+std::to_string(maxPacket->destinationAddress())+".\nChecking if we have a virtual Device to handle it.");
+			std::shared_ptr<MAXPeer> senderPeer = getPeer(maxPacket->senderAddress());
+			std::shared_ptr<BaseLib::Systems::BasicPeer> receiverPeer = senderPeer->getPeer(3, maxPacket->destinationAddress(), 1);
+			if (receiverPeer->isVirtual) // when the paired peer on channel 3 is virtual
+			{
+				GD::out.printDebug("Found the virtual device to handle the wakeup packet. Invoking handling method.");
+				std::shared_ptr<BcTcCWm> virtualWT = std::dynamic_pointer_cast<BcTcCWm>(getPeer(receiverPeer->id));
+				// Invoce handling of wakeUp packet
+				virtualWT->handleWakeUp(maxPacket->senderAddress(), maxPacket->messageCounter());
+			}
+			
+		}
 		if(maxPacket->senderAddress() == _address) //Packet spoofed
 		{
 			std::shared_ptr<MAXPeer> peer(getPeer(maxPacket->destinationAddress()));
@@ -264,6 +281,7 @@ bool MAXCentral::onPacketReceived(std::string& senderID, std::shared_ptr<BaseLib
 			}
 			return false;
 		}
+		
 		std::shared_ptr<IPhysicalInterface> physicalInterface = getPhysicalInterface(maxPacket->senderAddress());
 		if(physicalInterface->getID() != senderID) return true;
 
@@ -1185,22 +1203,20 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 {
 	try
 	{
-		// get Virtual Peer by fixed
-		std::shared_ptr<MAXPeer> wt = getPeer(0x111111);
-		/* old, for the auto-ack performed by CUL I need a fixed address for fake wall thermostat, so I shouldn't use different virtual devices because they would need to have the same address
+        //virtuellen MAXPeer erzeugen, hier: Einen virtuellen Wandthermostat
+        std::shared_ptr<MAXPeer> wt;
 		uint64_t wtId = peer->getVirtualPeerId();
-		if(wtId != 0) wt = getPeer(wtId); */
+		if(wtId != 0) wt = getPeer(wtId);
 
 		// check if peer already exists
 		if(!wt)
 		{
-			// if there is not one virtual wall thermostat, create one
-			int32_t wtAddress = 0x111111;
-			// if(peer->hasPeers(3) && !peer->getPeer(3, wtId)) return; //Channel 3 for THERMALCONTROL_TC, check if already linked to another Peer on this channel
+            int32_t wtAddress = getUniqueAddress((0x39 << 16) + (peer->getAddress() & 0xFF00) + (peer->getAddress() & 0xFF));
+			if(peer->hasPeers(3) && !peer->getPeer(3, wtId)) return; //Channel 3 for THERMALCONTROL_TC, check if already linked to another Peer on this channel
 			std::string temp = peer->getSerialNumber().substr(3);
 			std::string serialNumber = getUniqueSerialNumber("VMD", BaseLib::Math::getNumber(temp));
 			wt.reset(new BcTcCWm(_deviceId, this));
-			wt->setAddress(0x111111);
+			wt->setAddress(wtAddress);
 			wt->setFirmwareVersion(0x10);	//TODO: Which version is necessary/working here?
 			wt->setDeviceType((uint32_t)DeviceType::BCTCCWM4);
 			wt->setSerialNumber(serialNumber);
@@ -1281,6 +1297,11 @@ void MAXCentral::addHomegearFeaturesValveDrive(std::shared_ptr<MAXPeer>	peer)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
+}
+
+void MAXCentral::addHomegearFeaturesValveDrive(uint64_t id) {
+	std::shared_ptr<MAXPeer> peer = getPeer(id);
+	addHomegearFeaturesValveDrive(peer);
 }
 
 std::shared_ptr<MAXPacket> MAXCentral::getTimePacket(uint8_t messageCounter, int32_t receiverAddress, bool burst)

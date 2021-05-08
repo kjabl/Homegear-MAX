@@ -853,6 +853,30 @@ void MAXPeer::packetReceived(std::shared_ptr<MAXPacket> packet)
 		setRSSIDevice(packet->rssiDevice());
 		serviceMessages->endUnreach();
 
+		// handle WakeUp Call for virtual Wallthermostat
+		if (packet->messageType() == 0xF1)
+		{
+			/* Wandthermostat holen und anweisen Paket neu zu senden. */
+			std::unordered_map<int32_t, std::vector<std::shared_ptr<BaseLib::Systems::BasicPeer>>>::iterator peersIterator = _peers.find(3); // channel 3 for THERMALCONTROL_TC
+			if(peersIterator == _peers.end() || peersIterator->second.empty() || !peersIterator->second.at(0)->isVirtual)
+			{
+				_peersMutex.unlock();
+				return;
+			}
+			std::shared_ptr<BaseLib::Systems::BasicPeer> remotePeer = peersIterator->second.at(0);
+			_peersMutex.unlock();
+			if(!remotePeer->peer)
+			{
+				remotePeer->peer = getCentral()->getPeer(remotePeer->id);
+				if(!remotePeer->peer || remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) return; 	
+			}
+			if(remotePeer->peer->getDeviceType() != (uint32_t)DeviceType::BCTCCWM4) {
+				std::shared_ptr<BcTcCWm> tc(std::dynamic_pointer_cast<BcTcCWm>(remotePeer->peer));	// tc is the virtual wallthermostat
+				tc->handleWakeUp(_address, packet->messageCounter());
+			}
+		}
+		
+
         if(packet->destinationAddress() != 0 && _lastReceivedMessageCounter == packet->messageCounter())
         {
             if(packet->messageType() != 0x02 && packet->messageType() != 0xFF && packet->destinationAddress() == central->getAddress()) central->sendOK(packet->messageCounter(), packet->senderAddress());
@@ -1301,11 +1325,14 @@ bool MAXPeer::setHomegearValue(PRpcClientInfo clientInfo, uint32_t channel, std:
 			// PParameter desiredParameter = 
 			BaseLib::PVariable desiredTemperatureVariable = getValue(clientInfo, 1, "SET_TEMPERATURE", false, true);
 			//getValueFromDevice(desiredParameter, 1, true);
+			uint32_t desiredTemperature = getTemperatureFromWeekplan();
+			GD::out.printDebug("Desired Temperature from Weekplan would be: "+std::to_string(desiredTemperature));
 			GD::out.printDebug("The desired Temperature from device is: " + std::to_string(desiredTemperatureVariable->floatValue) + ".");
 			
 			
 			// build payload
 			std::vector<uint8_t> payload;
+			payload.push_back(0x00); // adding two zero for what FHEM calls groupID
 			payload.push_back(((temperatureAsInt & 0x100) >> 1) | (((uint32_t)(2 * desiredTemperatureVariable->floatValue)) & 0x7F));
 			payload.push_back(temperatureAsInt & 0xFF);
 
@@ -1336,6 +1363,62 @@ bool MAXPeer::setHomegearValue(PRpcClientInfo clientInfo, uint32_t channel, std:
 		}
 	}
 	return false;
+}
+
+float MAXPeer::getTemperatureFromWeekplan() {
+	// Method is used to get the desiredTemperature from schedule in device
+
+    // Perhaps this could be done easier
+    time_t timer;
+    struct tm * timeinfo;
+    time (&timer);
+    timeinfo = localtime (&timer);
+    int16_t wday = timeinfo->tm_wday;   
+    std::string daystr;
+
+    BaseLib::DeviceDescription::PParameterGroup paramset = getParameterSet(0, BaseLib::DeviceDescription::ParameterGroup::Type::config);
+    // get the actual day
+    switch (wday)
+    {
+    case 0:
+        daystr = "MONDAY";
+        break;
+    case 1:
+        daystr = "TUESDAY";
+        break;
+    case 2:
+        daystr = "WEDNESDAY";
+        break;
+    case 3:
+        daystr = "THURSDAY";
+        break;
+    case 4:
+        daystr = "FRIDAY";
+        break;
+    case 5:
+        daystr = "SATURDAY";
+        break;
+    case 6:
+        daystr = "SUNDAY";
+        break;
+    }
+
+    // find the right timespot
+    BaseLib::DeviceDescription::PParameter param;
+    int32_t minutes = timeinfo->tm_min;
+    float desiredTemp;
+    for (size_t i = 1; i < 14; i++)
+    {
+        param = paramset->getParameter("ENDTIME_"+daystr+"_"+std::to_string(i));
+        if(getValueFromDevice(param, 0, true)->integerValue > minutes) {
+            // found the timespot, getting temperature now
+            param = paramset->getParameter("TEMPERATURE_"+daystr+"_"+std::to_string(i));
+            desiredTemp = getValueFromDevice(param, 0, true)->floatValue;
+            break;
+        }
+    }
+    GD::out.printDebug("Found desired Temperature for valve drive: "+std::to_string(_peerID)+": "+std::to_string(desiredTemp));
+    return desiredTemp; 
 }
 
 PVariable MAXPeer::setValue(BaseLib::PRpcClientInfo clientInfo, uint32_t channel, std::string valueKey, PVariable value, bool wait)
